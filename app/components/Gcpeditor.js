@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation'; // Import the useRouter hook
 import 'leaflet/dist/leaflet.css';
 import { Tab, Tabs, TabList, TabPanel } from 'react-tabs';
@@ -88,12 +87,25 @@ const GcpEditor = () => {
             Upload and Process CSV
           </button>
         </TabPanel>
+        {gcpPoints.length > 0 && (
+  <div>
+    <h2>GCP Points</h2>
+    <ul>
+      {gcpPoints.map((point) => (
+        <li key={point.id}>
+          Name: {point.name}, Lat: {point.lat}, Lng: {point.lng}
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
         <TabPanel>
           <input type="file" accept=".txt" onChange={handleTextFileUpload} />
           <button onClick={handleTextFileSubmit} className="button">
             Upload and Resume Work
           </button>
         </TabPanel>
+
       </Tabs>
       <style jsx>{`
         .container {
