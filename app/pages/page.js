@@ -99,9 +99,10 @@ const MapPage = () => {
       if (map && typeof map.setView === 'function') {
         map.setView(mapCenter, mapZoom);
       }
-    }, [mapCenter, mapZoom, map]);
+    }, [map]); // Only depend on 'map' as it's the main reference needed
     return null;
   };
+  
 
   return (
     <div className="container">
