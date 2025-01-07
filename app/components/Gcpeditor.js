@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation'; // Import the useRouter hook
+import { useRouter } from 'next/navigation';
 import 'leaflet/dist/leaflet.css';
 import { Tab, Tabs, TabList, TabPanel } from 'react-tabs';
 import 'react-tabs/style/react-tabs.css';
@@ -11,7 +11,7 @@ const GcpEditor = () => {
   const [gcpPoints, setGcpPoints] = useState([]);
   const [csvFile, setCsvFile] = useState(null);
   const [textFile, setTextFile] = useState(null);
-  const router = useRouter(); // Get router instance for navigation
+  const router = useRouter(); 
 
   const handleCSVUpload = (event) => {
     const file = event.target.files?.[0];
