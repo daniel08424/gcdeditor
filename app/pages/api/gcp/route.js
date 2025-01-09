@@ -1,24 +1,19 @@
 export async function POST(req) {
   try {
-    // Read JSON body
     const body = await req.json();
-    const gcpPoints = body.gcpPoints; // Get the array directly
+    const gcpPoints = body.gcpPoints;
 
     if (!Array.isArray(gcpPoints) || gcpPoints.length === 0) {
       return new Response(JSON.stringify({ message: "Invalid GCP points format." }), { status: 400 });
     }
 
-    // Convert GCP points to TXT format
     const txtContent = gcpPoints
       .map((point) => `${point.name}, ${point.lat}, ${point.lng}`)
       .join('\n');
 
-    // ✅ Generate a unique filename with timestamp
     const timestamp = new Date().toISOString().replace(/[-T:.Z]/g, "");
     const fileName = `gcp_points_${timestamp}.txt`;
 
-
-    // ✅ Return file for download with correct headers
     return new Response(txtContent, {
       status: 200,
       headers: {

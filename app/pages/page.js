@@ -2,306 +2,290 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
+import { useRouter } from 'next/navigation';
 
-// Dynamically import react-leaflet components to prevent SSR issues
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false });
 const TileLayer = dynamic(() => import('react-leaflet').then(mod => mod.TileLayer), { ssr: false });
 const Marker = dynamic(() => import('react-leaflet').then(mod => mod.Marker), { ssr: false });
 const Popup = dynamic(() => import('react-leaflet').then(mod => mod.Popup), { ssr: false });
-const useMap = dynamic(() => import('react-leaflet').then(mod => mod.useMap), { ssr: false });
 
 const MapPage = () => {
-  const [L, setLeaflet] = useState(null); // Hold Leaflet library
+  const [L, setLeaflet] = useState(null);
   const [gcpPoints, setGcpPoints] = useState([]);
-  const [editingPoint, setEditingPoint] = useState(null);
-  const [mapCenter, setMapCenter] = useState([25, -80]); // Default center
-  const [mapZoom, setMapZoom] = useState(5); // Default zoom
+  const [mapBounds, setMapBounds] = useState(null);
+  const router = useRouter();
 
-  // Get GCP points from localStorage when the page loads
-  useEffect(() => {
+  const loadPoints = () => {
     const storedPoints = JSON.parse(localStorage.getItem('gcpPoints')) || [];
-    setGcpPoints(storedPoints);
+    const parsedPoints = storedPoints.map((point) => ({
+      id: Date.now() + Math.random(),
+      lat: parseFloat(point.x) || 0,
+      lng: parseFloat(point.y) || 0,
+      z: parseFloat(point.z),
+      pixelX: parseFloat(point.pixelX),
+      pixelY: parseFloat(point.pixelY),
+      imageName: point.imageName,
+      name: point.name,
+      imagesCount: point.imagesCount || Math.floor(Math.random() * 4 + 1), t
+    }));
 
-    if (storedPoints.length > 0) {
-      // Center map on the first point found
-      setMapCenter([storedPoints[0].lat, storedPoints[0].lng]);
-      setMapZoom(10);
+    setGcpPoints(parsedPoints);
+
+    if (parsedPoints.length > 0) {
+      const bounds = parsedPoints.map((point) => [point.lat, point.lng]);
+      setMapBounds(bounds);
     }
 
     import('leaflet').then((leaflet) => {
       setLeaflet(leaflet);
     });
+  };
+
+  useEffect(() => {
+    loadPoints();
+
+    const handlePopState = () => {
+      window.location.reload();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
 
-  // Custom marker icon with the background removed
   const markerIcon = L
     ? L.icon({
-        iconUrl: '/download__3_-removebg-preview.png', // Ensure the image path is correct and points to the public folder
-        iconSize: [50, 50], // Adjust the size as needed
-        iconAnchor: [25, 50], // Anchor at the bottom center of the marker
+        iconUrl: '/download__3_-removebg-preview.png',
+        iconSize: [50, 50],
+        iconAnchor: [25, 50],
       })
     : null;
 
-  const editGcpDetails = (index, key, value) => {
-    const updatedPoints = [...gcpPoints];
-    updatedPoints[index] = { ...updatedPoints[index], [key]: value };
-    setGcpPoints(updatedPoints);
-  };
-
-  const updateMarkerPosition = (index, newLat, newLng) => {
-    const updatedPoints = [...gcpPoints];
-    updatedPoints[index] = { ...updatedPoints[index], lat: newLat, lng: newLng };
-    setGcpPoints(updatedPoints);
-
-    // Auto-center map when a marker is moved
-    setMapCenter([newLat, newLng]);
-    setMapZoom(12);
-  };
-
-  const exportGcpPoints = async () => {
-    try {
-      const response = await fetch('/pages/api/gcp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gcpPoints }),
+    const handleMarkerDragEnd = (e, id) => {
+      const updatedPoints = gcpPoints.map((point) => {
+        if (point.id === id) {
+          return {
+            ...point,
+            lat: e.target.getLatLng().lat,
+            lng: e.target.getLatLng().lng,
+          };
+        }
+        return point;
       });
+    
+      setGcpPoints(updatedPoints);
 
-      if (response.ok) {
-        // Read response as a blob (file content)
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
+      const groupedImages = JSON.parse(localStorage.getItem('groupedImages')) || {};
+      
+      updatedPoints.forEach((point) => {
+        if (groupedImages[point.name]) {
+          groupedImages[point.name] = groupedImages[point.name].map((image) => {
+            if (image.imageName === point.imageName) {
+              return {
+                ...image,
+                x: point.lat,
+                y: point.lng,
+              };
+            }
+            return image;
+          });
+        }
+      });
+    
+      localStorage.setItem('groupedImages', JSON.stringify(groupedImages));
+    };
+    
+  const handleDownload = () => {
+    const groupedImages = JSON.parse(localStorage.getItem('groupedImages')) || {};
 
-        // Extract filename from Content-Disposition header
-        const contentDisposition = response.headers.get('Content-Disposition');
-        const match = contentDisposition?.match(/filename="(.+)"/);
-        const fileName = match ? match[1] : 'gcp_points.txt';
+    const textContent = Object.values(groupedImages)
+      .flat()
+      .map((point) =>
+        `${point.x}\t${point.y}\t${point.z}\t${point.pixelX}\t${point.pixelY}\t${point.imageName}\t${point.name}`
+      )
+      .join('\n');
 
-        // Create a link element and trigger download
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-      } else {
-        alert('Error exporting GCP points.');
-      }
-    } catch (error) {
-      console.error('Export error:', error);
-      alert('An error occurred while exporting.');
-    }
+    const blob = new Blob([textContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'gcp_points.txt';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  // Component to update the map center and zoom
-  const MapUpdater = () => {
-    const map = useMap();
-    useEffect(() => {
-      if (map && typeof map.setView === 'function') {
-        map.setView(mapCenter, mapZoom);
-      }
-    }, [mapCenter, mapZoom, map]);
-    return null;
+  const uniqueGCPs = Array.from(
+    new Map(
+      gcpPoints.map((point) => [point.name, point])
+    ).values()
+  );
+
+  const handleRedirect = (gcpName) => {
+    router.push(`/pages/api/image?gcpName=${encodeURIComponent(gcpName)}`);
   };
 
   return (
-    <div className="container">
-      <h1>Map with GCP Coordinates</h1>
-
-      <div className="map-container" style={{ marginTop: '20px' }}>
-        <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '400px', width: '100%' }}>
+    <div className="page-container">
+      <div className="left-pane">
+        <h2>Ground Control Points</h2>
+        <ul className="coordinate-list">
+          {uniqueGCPs.map((point) => (
+            <li key={point.id} className="coordinate-item">
+              <span className="gcp-name">
+                {point.name} (Image : {JSON.parse(localStorage.getItem('groupedImages'))?.[point.name]?.length || 0})
+              </span>
+              <button
+                className="tag-button"
+                onClick={() => handleRedirect(point.name)}
+              >
+                📷 Tag
+              </button>
+            </li>
+          ))}
+        </ul>
+  
+        <button className="download-button" onClick={handleDownload}>
+          Download GCP Points
+        </button>
+      </div>
+  
+      <div className="right-pane">
+        <MapContainer
+          bounds={mapBounds}
+          style={{ height: '100%', width: '100%' }}
+          scrollWheelZoom={true}
+        >
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          <MapUpdater />
-
-          {gcpPoints.map((point, idx) => (
+          {gcpPoints.map((point) => (
             <Marker
               key={point.id}
               position={[point.lat, point.lng]}
+              icon={markerIcon}
               draggable={true}
-              icon={markerIcon} // Use the custom marker icon here
               eventHandlers={{
-                dragend: (e) => {
-                  const { lat, lng } = e.target.getLatLng();
-                  updateMarkerPosition(idx, lat, lng);
-                },
-                click: () => setEditingPoint(idx), // Open editor on marker click
+                dragend: (e) => handleMarkerDragEnd(e, point.id),
               }}
             >
-              {/* Display Name + Coordinates in Popup */}
               <Popup>
                 <strong>{point.name}</strong>
                 <br />
-                Lat: {point.lat.toFixed(6)}
+                Lat: {point.lat}, Lng: {point.lng}, Z: {point.z}
                 <br />
-                Lng: {point.lng.toFixed(6)}
+                Pixel (X, Y): ({point.pixelX}, {point.pixelY})
+                <br />
+                Image: {point.imageName}
               </Popup>
             </Marker>
           ))}
         </MapContainer>
       </div>
-
-
-      {/* GCP Editing Panel */}
-      {editingPoint !== null && (
-        <div className="editor-panel">
-          <h3>Edit GCP Point</h3>
-          <label>Name:</label>
-          <input
-            type="text"
-            value={gcpPoints[editingPoint].name}
-            onChange={(e) => editGcpDetails(editingPoint, 'name', e.target.value)}
-          />
-          <label>Latitude:</label>
-          <input
-            type="number"
-            value={gcpPoints[editingPoint].lat}
-            onChange={(e) => editGcpDetails(editingPoint, 'lat', parseFloat(e.target.value))}
-          />
-          <label>Longitude:</label>
-          <input
-            type="number"
-            value={gcpPoints[editingPoint].lng}
-            onChange={(e) => editGcpDetails(editingPoint, 'lng', parseFloat(e.target.value))}
-          />
-          <button onClick={() => setEditingPoint(null)}>Close</button>
-        </div>
-      )}
-
-      <div className="coordinates-section" style={{ marginTop: '20px' }}>
-        <h2>Coordinates List</h2>
-        <ul>
-          {gcpPoints.map((point, idx) => (
-            <li key={idx}>
-              <strong>{`Point ${idx + 1}`} : </strong> 
-              Lat: {point.lat.toFixed(6)}, Lng: {point.lng.toFixed(6)}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <button onClick={exportGcpPoints} style={{ marginTop: '10px', padding: '10px', cursor: 'pointer' }}>
-        Export to TXT
-      </button>
-
+  
       <style jsx>{`
-  .container {
-    max-width: 90%;
-    margin: 30px auto;
-    padding: 20px;
-    background-color: white;
-    color: black;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    border-radius: 8px;
-    font-family: Arial, Helvetica, sans-serif;
-    line-height: 1.6;
-  }
-
-  h1 {
-    text-align: center;
-    font-size: 2rem;
-    margin-bottom: 20px;
-    font-weight: bold;
-  }
-
-  .map-container {
-    margin-top: 20px;
-    border-radius: 8px;
-    overflow: hidden;
-  }
-
-  .coordinates-section {
-    margin-top: 20px;
-    background-color: #f9f9f9;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
-
-  .coordinates-section h2 {
-    font-size: 1.5rem;
-    margin-bottom: 10px;
-    font-weight: bold;
-  }
-
-  .coordinates-section ul {
-    list-style-type: none;
-    padding: 0;
-  }
-
-  .coordinates-section li {
-    margin-bottom: 8px;
-  }
-
-  .editor-panel {
-    margin-top: 10px;
-    background-color: #f9f9f9;
-    padding: 10px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
-
-  .editor-panel h3 {
-    font-size: 1.5rem;
-    margin-bottom: 15px;
-    font-weight: bold;
-  }
-
-  .editor-panel label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: 600;
-  }
-
-  .editor-panel input {
-    width: 100%;
-    padding: 8px;
-    margin-bottom: 15px;
-    font-size: 1rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-sizing: border-box;
-  }
-
-  .editor-panel input[type="number"] {
-    width: 48%;
-    display: inline-block;
-    margin-right: 4%;
-  }
-
-  .editor-panel button {
-    padding: 10px;
-    background-color: black;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1rem;
-  }
-
-  .editor-panel button:hover {
-    background-color: gray;
-  }
-
-  button {
-    padding: 10px 20px;
-    background-color: black;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1rem;
-    margin-top: 20px;
-  }
-
-  button:hover {
-    background-color: gray;
-  }
-`}</style>
-
+        .page-container {
+          display: flex;
+          height: 100vh;
+          font-family: Arial, sans-serif;
+        }
+  
+        .left-pane {
+          width: 30%;
+          background: #f8f9fa;
+          padding: 20px;
+          overflow-y: auto;
+          border-right: 1px solid #ddd;
+          color: black;
+          position: relative;
+        }
+  
+        .left-pane h2 {
+          font-size: 1.5rem;
+          margin-bottom: 20px;
+        }
+  
+        .coordinate-list {
+          list-style: none;
+          padding: 0;
+          margin-bottom: 60px; /* Leave space for the button */
+        }
+  
+        .coordinate-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px;
+          margin-bottom: 10px;
+          background: white;
+          border: 1px solid #ddd;
+          border-radius: 5px;
+        }
+  
+        .gcp-name {
+          font-weight: bold;
+          margin-right: auto;
+        }
+  
+        .images-count {
+          margin: 0 10px;
+          padding: 5px 10px;
+          font-size: 0.9rem;
+          color: white;
+          border-radius: 3px;
+        }
+  
+        .images-count.green {
+          background-color: #28a745;
+        }
+  
+        .images-count.yellow {
+          background-color: #ffc107;
+        }
+  
+        .tag-button {
+          background: #007bff;
+          color: white;
+          border: none;
+          padding: 5px 10px;
+          border-radius: 3px;
+          cursor: pointer;
+        }
+  
+        .tag-button:hover {
+          background: #0056b3;
+        }
+  
+        .right-pane {
+          width: 70%;
+          position: relative;
+        }
+  
+        .right-pane > :global(.leaflet-container) {
+          height: 100%;
+          width: 100%;
+        }
+  
+        .download-button {
+          position: absolute;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #28a745;
+          color: white;
+          padding: 10px 20px;
+          font-size: 16px;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+        }
+  
+        .download-button:hover {
+          background: #218838;
+        }
+      `}</style>
     </div>
-
-    
   );
+  
 };
 
 export default MapPage;
-
