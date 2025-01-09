@@ -35,7 +35,7 @@ const ImageUploader = () => {
 
     setImages((prevImages) => {
       const allImages = [...prevImages, ...imageUrls];
-      return allImages.sort((a, b) => (a.headerColor === 'green' ? -1 : 1));
+      return allImages.sort((a) => (a.headerColor === 'green' ? -1 : 1));
     });
   };
 
