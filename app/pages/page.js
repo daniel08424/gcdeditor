@@ -26,7 +26,7 @@ const MapPage = () => {
       pixelY: parseFloat(point.pixelY),
       imageName: point.imageName,
       name: point.name,
-      imagesCount: point.imagesCount || Math.floor(Math.random() * 4 + 1), t
+      imagesCount: point.imagesCount || Math.floor(Math.random() * 4 + 1), 
     }));
 
     setGcpPoints(parsedPoints);
@@ -66,6 +66,7 @@ const MapPage = () => {
     const handleMarkerDragEnd = (e, id) => {
       const updatedPoints = gcpPoints.map((point) => {
         if (point.id === id) {
+          
           return {
             ...point,
             lat: e.target.getLatLng().lat,
@@ -76,7 +77,8 @@ const MapPage = () => {
       });
     
       setGcpPoints(updatedPoints);
-
+    
+      
       const groupedImages = JSON.parse(localStorage.getItem('groupedImages')) || {};
       
       updatedPoints.forEach((point) => {

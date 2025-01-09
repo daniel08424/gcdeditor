@@ -150,7 +150,6 @@ const GcpEditor = () => {
         </TabPanel>
       </Tabs>
 
-      
       {crs && (
         <div>
           <h2>Coordinate Reference System (CRS)</h2>
